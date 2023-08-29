@@ -1,0 +1,7 @@
+# Get the specific group's members
+$groupName = "name_of_group_with_members"
+$groupId = (Get-AzureADGroup -SearchString $groupName).ObjectId
+$groupUsersA = Get-AzureADGroupMember -ObjectId $groupId -All $true | Where-Object {$_.ObjectType -eq 'User'} | Select-Object UserPrincipalName, DisplayName, Mail, MobilePhone, JobTitle
+
+# Save $groupUsersA to a CSV file at C:\temp\groupA_file.csv
+$groupUsersA | Export-Csv -Path "C:\temp\groupA_file.csv" -NoTypeInformation -Encoding UTF8
