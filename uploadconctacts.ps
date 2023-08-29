@@ -1,0 +1,60 @@
+# Step 1: Load current import and previous state
+$currentImport = Import-Csv -Path "C:\temp\groupA_file.csv" -Encoding UTF8
+$previousImport = @() # Default to an empty array
+if (Test-Path "C:\temp\group_A_file_prev.csv") {
+    $previousImport = Import-Csv -Path "C:\temp\group_A_file_prev.csv" -Encoding UTF8
+}
+
+# Step 2: Connect to Exchange Online for Tenant B (ensure you're connected; if not, uncomment the line below)
+# Connect-ExchangeOnline -UserPrincipalName admin@tenantB.com -ShowProgress $true
+
+# Step 3: Process the current import
+foreach ($user in $currentImport) {
+    $existingContact = Get-MailContact | Where-Object { $_.ExternalEmailAddress -eq $user.Mail }
+
+    if ($existingContact) {
+        # Existing contact. Check for changes by comparing with previous import.
+        $previousUser = $previousImport | Where-Object { $_.Mail -eq $user.Mail }
+
+        # If user doesn't exist in previous import or details changed, update the contact.
+        if (-not $previousUser -or $existingContact.DisplayName -ne $user.DisplayName) {
+            Set-MailContact -Identity $existingContact.Identity -Name $user.DisplayName
+        }
+    } else {
+        # New contact. Add to Tenant B.
+        New-MailContact -Name $user.DisplayName -ExternalEmailAddress $user.Mail -FirstName $user.DisplayName
+    }
+}
+
+# Step 4: Identify deleted users by checking if any user in the previous import is missing in the current import
+# Fetch all mail contacts from the domain
+$allContactsFromDomain = Get-MailContact -ResultSize Unlimited | Where-Object { $_.ExternalEmailAddress -like "*domainname.com" }
+
+# Print out a list of all fetched contacts for debugging
+$allContactsFromDomain | ForEach-Object { Write-Output "Fetched contact: $($_.ExternalEmailAddress)" }
+
+foreach ($prevUser in $previousImport) {
+    if ($prevUser.Mail -notin $currentImport.Mail) {
+        # Find the contact in the fetched list
+        $formattedMail = "SMTP:" + $prevUser.Mail
+        $contactToDelete = $allContactsFromDomain | Where-Object { $_.ExternalEmailAddress -eq $formattedMail }
+
+        if ($contactToDelete) {
+            Write-Output "Attempting to delete: $($contactToDelete.ExternalEmailAddress)"
+            Remove-MailContact -Identity $contactToDelete.Identity -Confirm:$false
+        } else {
+            Write-Output "Contact not found in fetched list: $prevUser.Mail"
+        }
+    }
+}
+
+# Step 5: Rename the file for future comparisons
+$originalFilePath = "C:\temp\groupA_file.csv"
+$newFilePath = "C:\temp\group_A_file_prev.csv"
+if (Test-Path $newFilePath) {
+    Remove-Item -Path $newFilePath -Force
+}
+Rename-Item -Path $originalFilePath -NewName (Split-Path -Leaf $newFilePath)
+
+# Optionally disconnect from Exchange session
+# Disconnect-ExchangeOnline -Confirm:$false
