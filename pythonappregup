@@ -1,0 +1,64 @@
+import csv
+from exchangelib import Credentials, Account, Configuration, DELEGATE
+import adal
+
+# App Registration Details
+tenant_id = 'YOUR_TENANT_ID'
+client_id = 'YOUR_APP_ID'
+client_secret = 'YOUR_APP_SECRET'
+
+# Authentication
+authority = f'https://login.microsoftonline.com/{tenant_id}'
+context = adal.AuthenticationContext(authority)
+token = context.acquire_token_with_client_credentials('https://graph.microsoft.com', client_id, client_secret)
+
+# Exchange Connection
+credentials = Credentials(username=tenant_id + '\\' + client_id, password=token['accessToken'])
+config = Configuration(server='outlook.office365.com', credentials=credentials)
+account = Account(primary_smtp_address='admin@tenantB.com', config=config, autodiscover=False, access_type=DELEGATE)
+
+# Step 1: Load current import and previous state
+with open("C:\temp\groupA_file.csv", 'r', encoding='UTF8') as f:
+    reader = csv.DictReader(f)
+    current_import = list(reader)
+
+previous_import = []  # Default to an empty array
+if os.path.exists("C:\temp\group_A_file_prev.csv"):
+    with open("C:\temp\group_A_file_prev.csv", 'r', encoding='UTF8') as f:
+        reader = csv.DictReader(f)
+        previous_import = list(reader) 
+
+# Step 3: Process the current import
+for user in current_import:
+    # Get-MailContact equivalent needs Exchangelib's search/filter methods
+    existing_contact = account.contacts.filter(external_email_address=user['Mail'])[:1]  # Get first match 
+
+    if existing_contact:
+        # ... Comparison and update logic ...
+        # You'll need to use Exchangelib methods to update contact properties
+
+    else:
+        # New contact - Use Exchangelib's contact creation methods
+        new_contact = Contact(folder=account.contacts)  # Or specify a different folder
+        # ... Set properties from the 'user' object ...
+
+# Step 4: Identify deleted users 
+all_contacts_from_domain = account.contacts.filter(email_address__contains='domainname.com')
+
+# Print out a list of all fetched contacts for debugging
+for contact in all_contacts_from_domain:
+    print(f"Fetched contact: {contact.email_address}")
+
+for prev_user in previous_import:
+    if prev_user['Mail'] not in [user['Mail'] for user in current_import]:
+        # ... Adapt contact searching logic from above
+        contact_to_delete = account.contacts.filter(email_address=f"SMTP:{prev_user['Mail']}")[:1]
+
+        if contact_to_delete:
+            print(f"Attempting to delete: {contact_to_delete[0].email_address}")
+            contact_to_delete[0].delete(send_trash=False)  # Exchangelib's delete method
+        else:
+            print(f"Contact not found in fetched list: {prev_user['Mail']}")
+
+# Step 5: File Renaming 
+# ... (Python's 'os' module is used for file operations) ... 
